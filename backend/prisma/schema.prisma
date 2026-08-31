@@ -1,0 +1,80 @@
+// Schema de Prisma - Sistema de Alquiler de Equipos Médicos
+// Arquitectura en capas: este archivo es el único punto donde se define
+// la estructura de datos. La capa de repositorios es la única que debería
+// importar el cliente de Prisma generado a partir de este schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Categoria {
+  id      Int      @id @default(autoincrement())
+  nombre  String   @unique
+  equipos Equipo[]
+
+  @@map("categorias")
+}
+
+model Equipo {
+  id           Int          @id @default(autoincrement())
+  nombre       String
+  numeroSerie  String       @unique @map("numero_serie")
+  descripcion  String?
+  fotoUrl      String?      @map("foto_url")
+  categoriaId  Int          @map("categoria_id")
+  categoria    Categoria    @relation(fields: [categoriaId], references: [id])
+  estado       EstadoEquipo @default(DISPONIBLE)
+  alquileres   Alquiler[]
+  creadoEn     DateTime     @default(now()) @map("creado_en")
+
+  @@map("equipos")
+}
+
+enum EstadoEquipo {
+  DISPONIBLE
+  ALQUILADO
+  MANTENIMIENTO
+
+  @@map("estado_equipo")
+}
+
+model Cliente {
+  id         Int        @id @default(autoincrement())
+  nombre     String
+  documento  String     @unique
+  telefono   String?
+  direccion  String?
+  alquileres Alquiler[]
+  creadoEn   DateTime   @default(now()) @map("creado_en")
+
+  @@map("clientes")
+}
+
+model Alquiler {
+  id                  Int            @id @default(autoincrement())
+  equipoId            Int            @map("equipo_id")
+  equipo              Equipo         @relation(fields: [equipoId], references: [id])
+  clienteId           Int            @map("cliente_id")
+  cliente             Cliente        @relation(fields: [clienteId], references: [id])
+  fechaInicio         DateTime       @default(now()) @map("fecha_inicio")
+  fechaVencimiento     DateTime      @map("fecha_vencimiento")
+  fechaDevolucionReal DateTime?      @map("fecha_devolucion_real")
+  monto               Decimal        @db.Decimal(10, 2)
+  estado              EstadoAlquiler @default(ACTIVO)
+  creadoEn            DateTime       @default(now()) @map("creado_en")
+
+  @@map("alquileres")
+}
+
+enum EstadoAlquiler {
+  ACTIVO
+  VENCIDO
+  FINALIZADO
+
+  @@map("estado_alquiler")
+}

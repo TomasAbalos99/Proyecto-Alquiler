@@ -1,0 +1,276 @@
+### Variables
+@baseUrl = http://localhost:3000/api
+
+###############################################
+# 1. Health check
+###############################################
+
+### Confirma que el server responde
+GET {{baseUrl}}/health
+
+###############################################
+# 2. Crear categoría (base para poder crear equipos)
+###############################################
+
+# @name crearCategoria
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+  "nombre": "Camas ortopédicas"
+}
+
+###############################################
+# 3. Crear equipo (usa el id de la categoría creada arriba)
+###############################################
+
+# @name crearEquipo
+POST {{baseUrl}}/equipos
+Content-Type: application/json
+
+{
+  "nombre": "Cama ortopédica modelo A",
+  "numeroSerie": "CO-002",
+  "categoriaId": {{crearCategoria.response.body.$.id}}
+}
+
+###############################################
+# 4. Crear cliente
+###############################################
+
+# @name crearCliente
+POST {{baseUrl}}/clientes
+Content-Type: application/json
+
+{
+  "nombre": "María González",
+  "documento": "87654321",
+  "telefono": "099987654",
+  "direccion": "Calle Independencia 456"
+}
+
+###############################################
+# 5. Crear alquiler (cruza equipo + cliente)
+# El equipo debería pasar a estado ALQUILADO
+###############################################
+
+# @name crearAlquiler
+POST {{baseUrl}}/alquileres
+Content-Type: application/json
+
+{
+  "equipoId": {{crearEquipo.response.body.$.id}},
+  "clienteId": {{crearCliente.response.body.$.id}},
+  "fechaVencimiento": "2026-10-15",
+  "monto": 1500
+}
+
+###############################################
+# 6. ⚠️ PRUEBA CRÍTICA: intentar alquilar el MISMO equipo de nuevo
+# Debe fallar con un error controlado (400/409), NO con un 500,
+# y NO debe crear un segundo alquiler activo para este equipo.
+###############################################
+
+POST {{baseUrl}}/alquileres
+Content-Type: application/json
+
+{
+  "equipoId": {{crearEquipo.response.body.$.id}},
+  "clienteId": {{crearCliente.response.body.$.id}},
+  "fechaVencimiento": "2026-10-20",
+  "monto": 1000
+}
+
+### Intentar cambiar a DISPONIBLE con alquiler activo
+# Debe devolver 409 mientras el alquiler esté ACTIVO.
+PATCH {{baseUrl}}/equipos/{{crearEquipo.response.body.$.id}}/estado
+Content-Type: application/json
+
+{
+  "estado": "DISPONIBLE"
+}
+
+### Intentar enviar a mantenimiento con alquiler activo
+# Debe devolver 409 mientras el alquiler esté ACTIVO.
+PATCH {{baseUrl}}/equipos/{{crearEquipo.response.body.$.id}}/mantenimiento
+
+###############################################
+# 7. Marcar devolución del alquiler creado
+###############################################
+
+PATCH {{baseUrl}}/alquileres/{{crearAlquiler.response.body.$.id}}/devolucion
+
+### Intentar devolver nuevamente el mismo alquiler
+# Debe devolver 409 y no modificar la devolución anterior.
+PATCH {{baseUrl}}/alquileres/{{crearAlquiler.response.body.$.id}}/devolucion
+
+### Verificar que el equipo volvió a estar DISPONIBLE
+GET {{baseUrl}}/equipos/{{crearEquipo.response.body.$.id}}
+
+###############################################
+# 8. Validación con datos inválidos
+# Debe devolver 400, no debe crear nada en la base
+###############################################
+
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+}
+
+###############################################
+# 9. Recurso inexistente
+# Debe devolver 404, no un 500
+###############################################
+
+GET {{baseUrl}}/equipos/999999
+
+###############################################
+# 10. Duplicados
+# Deben devolver 409 y no crear nuevos registros.
+###############################################
+
+### Categoría duplicada
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+  "nombre": "Camas ortopédicas"
+}
+
+### Cliente duplicado por documento
+POST {{baseUrl}}/clientes
+Content-Type: application/json
+
+{
+  "nombre": "Otro nombre",
+  "documento": "87654321"
+}
+
+### Equipo duplicado por número de serie
+POST {{baseUrl}}/equipos
+Content-Type: application/json
+
+{
+  "nombre": "Otro equipo",
+  "numeroSerie": "CO-002",
+  "categoriaId": {{crearCategoria.response.body.$.id}}
+}
+
+###############################################
+# 11. Referencias inexistentes
+# Deben devolver un error controlado y no un 500.
+###############################################
+
+### Equipo con categoría inexistente
+POST {{baseUrl}}/equipos
+Content-Type: application/json
+
+{
+  "nombre": "Equipo sin categoría",
+  "numeroSerie": "CO-NO-CAT",
+  "categoriaId": 999999
+}
+
+### Alquiler con cliente inexistente
+# Devuelve 409 porque la FK inexistente se traduce como conflicto.
+POST {{baseUrl}}/alquileres
+Content-Type: application/json
+
+{
+  "equipoId": {{crearEquipo.response.body.$.id}},
+  "clienteId": 999999,
+  "fechaVencimiento": "2026-10-20",
+  "monto": 1000
+}
+
+### Alquiler con vencimiento pasado
+# Debe devolver 400.
+POST {{baseUrl}}/alquileres
+Content-Type: application/json
+
+{
+  "equipoId": {{crearEquipo.response.body.$.id}},
+  "clienteId": {{crearCliente.response.body.$.id}},
+  "fechaVencimiento": "2020-01-01",
+  "monto": 1000
+}
+
+### Cliente inexistente
+GET {{baseUrl}}/clientes/999999
+
+### Alquiler inexistente
+PATCH {{baseUrl}}/alquileres/999999/devolucion
+
+###############################################
+# 12. Validación de params y query
+# Todos deben devolver 400.
+###############################################
+
+### IDs inválidos
+GET {{baseUrl}}/clientes/abc
+
+GET {{baseUrl}}/equipos/1.5
+
+PATCH {{baseUrl}}/alquileres/abc/devolucion
+
+### Filtros numéricos inválidos
+GET {{baseUrl}}/equipos?categoriaId=abc
+
+GET {{baseUrl}}/alquileres?clienteId=abc
+
+### Estados inválidos
+GET {{baseUrl}}/equipos?estado=INACTIVO
+
+GET {{baseUrl}}/alquileres?estado=INACTIVO
+
+### Filtro de cliente vacío
+GET {{baseUrl}}/clientes?nombre=%20%20
+
+###############################################
+# 13. Filtros válidos
+# Deben devolver 200.
+###############################################
+
+GET {{baseUrl}}/clientes?nombre=María
+
+GET {{baseUrl}}/equipos?categoriaId={{crearCategoria.response.body.$.id}}&estado=DISPONIBLE
+
+GET {{baseUrl}}/equipos?numeroSerie=CO-
+
+GET {{baseUrl}}/alquileres?clienteId={{crearCliente.response.body.$.id}}&estado=FINALIZADO
+
+GET {{baseUrl}}/alquileres?numeroSerie=CO-
+
+###############################################
+# 14. Mantenimiento y cambio manual de estado
+###############################################
+
+### Enviar equipo disponible a mantenimiento
+# Debe devolver 200 y dejar el equipo en MANTENIMIENTO.
+PATCH {{baseUrl}}/equipos/{{crearEquipo.response.body.$.id}}/mantenimiento
+
+### Volver a dejarlo disponible
+# Debe devolver 200.
+PATCH {{baseUrl}}/equipos/{{crearEquipo.response.body.$.id}}/estado
+Content-Type: application/json
+
+{
+  "estado": "DISPONIBLE"
+}
+
+### Estado inválido
+# Debe devolver 400.
+PATCH {{baseUrl}}/equipos/{{crearEquipo.response.body.$.id}}/estado
+Content-Type: application/json
+
+{
+  "estado": "INACTIVO"
+}
+
+###############################################
+# 15. Vencimientos
+# Debe devolver 200 y listar alquileres vencidos o próximos.
+###############################################
+
+GET {{baseUrl}}/alquileres/vencimientos
